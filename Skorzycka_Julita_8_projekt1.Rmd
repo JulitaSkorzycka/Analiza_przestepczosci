@@ -1,0 +1,212 @@
+---
+title: "Skorzycka_Julita_8_projekt1"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+date: "2024-11-20"
+---
+
+```{r}
+library(sf)
+library(dbscan)
+library("ggplot2")
+```
+
+```{r}
+
+#Wczytaj plik z geometrią osiedli wraz z punktami do RStudio
+osiedla <- st_read("/Users/julitaskorzycka/Desktop/SEMESTR 5/Analiza Danych Przestrzennych /projekt /projekt_analiza-2/osiedla.shp")
+dane <- st_read("/Users/julitaskorzycka/Desktop/SEMESTR 5/Analiza Danych Przestrzennych /shapefile/zestaw8_XYTableToPoi_Project2.shp")
+
+```
+
+```{r}
+
+# Dopasowanie układów współrzędnych osiedli i punktów
+osiedla <- st_transform(osiedla, crs = st_crs(dane))
+
+# Wyodrębnienie współrzędnych punktów
+punkty <- st_coordinates(dane)
+
+```
+DBSCAN (Density-Based Spatial Clustering of Applications with Noise)
+
+DBSCAN to algorytm, który dzieli dane na klastry w oparciu o gęstość punktów w przestrzeni. Kluczowym założeniem jest to, że klastry tworzą się w obszarach o dużej koncentracji punktów, a obszary o mniejszej liczbie punktów są traktowane jako szum. Algorytm wymaga dwóch parametrów:
+
+1. eps (epsilon): określa maksymalną odległość między dwoma punktami, które mogą należeć do tego samego klastra. Jeśli odległość pomiędzy punktami przekroczy wartość eps, są one traktowane jako oddzielne klastry.
+
+2. minPts: minimalna liczba punktów, które muszą znajdować się w promieniu eps, aby punkt został uznany za część klastra.
+
+
+Zalety DBSCAN:
+
+- Wykrywa klastry o nieregularnych kształtach, co czyni go skutecznym w analizie złożonych danych przestrzennych.
+
+- Zidentyfikuje punkty szumów, które nie pasują do żadnego klastra, co pomaga w eliminowaniu błędów.
+
+- Algorytm nie wymaga z góry ustalonej liczby klastrów.
+
+Wady DBSCAN:
+
+- Wybór parametrów eps i minPts jest kluczowy i nie zawsze łatwy do określenia, szczególnie w przypadku danych o różnej gęstości.
+
+- Algorytm może mieć trudności z wykrywaniem klastrów, gdy gęstość punktów w różnych częściach danych jest zróżnicowana
+
+```{r}
+# Przeprowadzenie klasteryzacji DBSCAN z różnymi parametrami
+dbscan_1 <- dbscan(punkty, eps = 500, minPts = 10)
+dbscan_2 <- dbscan(punkty, eps = 250, minPts = 6)
+dbscan_3 <- dbscan(punkty, eps = 150, minPts = 3)
+dbscan_4 <- dbscan(punkty, eps = 100, minPts = 2)
+
+# Przechowywanie wyników w ramkach danych
+wynik_dbscan1 <- data.frame(punkty, cluster = as.factor(dbscan_1$cluster))
+wynik_dbscan2 <- data.frame(punkty, cluster = as.factor(dbscan_2$cluster))
+wynik_dbscan3 <- data.frame(punkty, cluster = as.factor(dbscan_3$cluster))
+wynik_dbscan4 <- data.frame(punkty, cluster = as.factor(dbscan_4$cluster))
+
+```
+
+```{r}
+# Tworzenie wykresów dla różnych parametrów DBSCAN
+#par(mfrow = c(2, 2))  
+for (i in 1:4) {
+  plot(osiedla$geometry,
+       main = paste0("DBSCAN: eps = ", c(500, 250, 150, 100)[i], 
+                     ", minPts = ", c(10, 6, 3, 2)[i]),
+       axes = TRUE,
+       xlab = "X", 
+       ylab = "Y", 
+       col = "white", 
+       border = "black")
+  
+  # Pobieranie wyników dla odpowiedniego wykresu
+  wyniki <- get(paste0("wynik_dbscan", i))
+  
+  # Dodawanie punktów dla każdego klastra
+  points(wyniki[wyniki[, "cluster"] != 0, 1:2], 
+         col = wyniki[wyniki[, "cluster"] != 0, "cluster"],  # Kolory klastrów
+         pch = 16, 
+         cex = 0.7)
+  
+  # Punkty szumów
+  points(wyniki[wyniki[, "cluster"] == 0, 1:2], 
+         col = "white",  # Białe kropki dla szumów
+         pch = 16, 
+         cex = 0.7)
+}
+
+```
+
+Wyniki: DBSCAN
+
+1. Parametry: DBSCAN (eps = 500, minPts = 10)
+- Ten wykres pokazuje największe klastry. Duży promień (500) i stosunkowo wysoka liczba punktów (minPts = 10) sprawiają, że wykryte są tylko największe skupiska, ignorując bardziej lokalne zagęszczenia przestępczości.
+- Ten wykres identyfikuje głównie większe klastry w centralnych dzielnicach Krakowa. Mniejsze skupiska są uznawane za szum (białe punkty), przez co nie pokazuje on szczegółowych, lokalnych danych.
+
+2. Parametry: DBSCAN (eps = 250, minPts = 6)
+- Mniejszy promień (250) i nieco niższy minPts (6) pozwalają na uchwycenie mniejszych klastrów, ale wciąż ignorowane są bardzo lokalne koncentracje przestępczości.
+- Wykres pokazuje bardziej zróżnicowane klastry niż poprzedni.
+
+3. Parametry: DBSCAN (eps = 150, minPts = 3)
+- Oto wykres, który lepiej radzi sobie z rozpoznawaniem mniejszych klastrów. Mniejszy promień (150) i mniejsze minPts (3) pozwalają uchwycić mniejsze skupiska przestępczości, ale nadal mogą występować błędy w klasyfikacji niektórych punktów.
+- Ten wykres zaczyna ukazywać lokalne skupiska przestępczości, co może być pomocne w analizie obszarów o wyższej intensywności przestępstw. Wciąż jednak może być widoczny szum, szczególnie w mniej gęstych częściach Krakowa.
+
+4. Parametry: DBSCAN (eps = 100, minPts = 2)
+- Bardzo mały promień (100) i minimalna liczba punktów (2) pozwalają na wykrycie bardzo drobnych skupisk, ale może to także prowadzić do dużej liczby punktów uznanych za szum (zwłaszcza w bardziej rozproszonej przestrzeni).
+- Ten wykres identyfikuje drobne skupiska, ale ma również tendencję do traktowania wielu punktów jako szum, zwłaszcza w mniej gęstych częściach Krakowa. Jest bardzo szczegółowy, ale może prowadzić do nieco zafałszowanych wniosków.
+
+/////////////////////////////////////////////////////////////////////////////////
+
+HDBSCAN jest rozszerzeniem algorytmu DBSCAN, które wprowadza dodatkowy etap hierarchicznej klasteryzacji. Główna różnica polega na tym, że HDBSCAN automatycznie dostosowuje parametry klasteryzacji, takie jak gęstość punktów w różnych obszarach, co pozwala mu lepiej radzić sobie z danymi o zmiennej gęstości. Zamiast sztywno ustalać jeden zestaw parametrów, jak w DBSCAN, HDBSCAN może elastycznie dostosowywać minimalną liczbę punktów wymaganych do utworzenia klastra, w zależności od lokalnej gęstości.
+
+Zalety HDBSCAN:
+
+- Adaptacyjność: HDBSCAN jest bardziej elastyczny w porównaniu do DBSCAN, gdyż potrafi wykrywać klastry w danych o zróżnicowanej gęstości, automatycznie dostosowując parametry.
+
+- Wydajność w różnych warunkach: Radzi sobie lepiej z danymi, które mają różne poziomy gęstości, co czyni go bardziej odpowiednim do złożonych zbiorów danych.
+
+Wady HDBSCAN:
+
+- Złożoność obliczeniowa: Proces klasteryzacji w HDBSCAN może być bardziej czasochłonny niż w DBSCAN, zwłaszcza przy dużych zbiorach danych.
+
+- Trudniejsza interpretacja wyników: Ze względu na hierarchiczny charakter algorytmu, wyniki mogą być mniej intuicyjne do analizy niż w przypadku klasycznego DBSCAN.
+```{r}
+# Przeprowadzenie klasteryzacji HDBSCAN z różnymi parametrami
+hdbscan_1 <- hdbscan(punkty, minPts = 2)
+hdbscan_2 <- hdbscan(punkty, minPts = 3)
+hdbscan_3 <- hdbscan(punkty, minPts = 5)
+hdbscan_4 <- hdbscan(punkty, minPts = 10)
+
+# Przechowywanie wyników HDBSCAN w ramkach danych
+wynik_hdbscan1 <- data.frame(punkty, cluster = as.factor(hdbscan_1$cluster))
+wynik_hdbscan2 <- data.frame(punkty, cluster = as.factor(hdbscan_2$cluster))
+wynik_hdbscan3 <- data.frame(punkty, cluster = as.factor(hdbscan_3$cluster))
+wynik_hdbscan4 <- data.frame(punkty, cluster = as.factor(hdbscan_4$cluster))
+```
+
+```{r}
+# Tworzenie wykresów dla różnych parametrów HDBSCAN
+for (i in 1:4) {
+  plot(osiedla$geometry,
+       main = paste0("HDBSCAN: minPts = ", c(2, 3, 5, 10)[i]),
+       axes = TRUE,
+       xlab = "X", 
+       ylab = "Y", 
+       col = "white", 
+       border = "black")
+  
+  # Pobieranie wyników dla odpowiedniego wykresu
+  wyniki <- get(paste0("wynik_hdbscan", i))
+  
+  # Dodawanie punktów dla każdego klastra
+  points(wyniki[wyniki[, "cluster"] != 0, 1:2], 
+         col = wyniki[wyniki[, "cluster"] != 0, "cluster"],  # Kolory klastrów
+         pch = 16, 
+         cex = 0.7)
+  
+  # Punkty szumów
+  points(wyniki[wyniki[, "cluster"] == 0, 1:2], 
+         col = "white",  # Białe kropki dla szumów
+         pch = 16, 
+         cex = 0.7)
+}
+
+```
+
+Wyniki: HDBSCAN
+
+1. Parametry: HDBSCAN (minPts = 2)
+- Przy najmniejszej wartości minPts (2) większość punktów tworzy bardzo drobne klastry.
+- Znaczna liczba punktów zostaje uznana za szum, co może powodować brak przejrzystości w interpretacji.
+- Duża liczba małych klastrów sprawia, że wykres jest szczegółowy, ale trudny do analizy pod kątem globalnych trendów.
+
+2. Parametry: HDBSCAN (minPts = 3)
+- Wykres prezentuje mniej drobnych klastrów w porównaniu do poprzedniego.
+- Główny klaster pozostaje zlokalizowany w centrum Krakowa (okolice Starego Miasta), co odzwierciedla obszar o najwyższej koncentracji przestępczości.
+- Nadal występuje wiele mniejszych klastrów na obrzeżach miasta, co świadczy o lokalnych obszarach o wyższej aktywności przestępczej.
+
+3. Parametry: HDBSCAN (minPts = 5)
+- Wyniki wydają się najbardziej precyzyjne i uporządkowane w porównaniu do innych konfiguracji.
+- Liczba małych klastrów na obrzeżach znacznie się zmniejsza, co eliminuje zakłócenia w interpretacji.
+- Główne skupisko przestępczości jest wyraźnie zlokalizowane w centrum Krakowa.
+
+4. Parametry: HDBSCAN (minPts = 10)
+- Przy wyższej wartości minPts klastry stają się mniejsze i bardziej wyselekcjonowane. Duża część punktów została sklasyfikowana jako szum.
+- Główny klaster nadal znajduje się w centralnej części miasta (Stare Miasto), co potwierdza, że jest to obszar o największej gęstości przestępstw.
+- Mniejsze klastry na obrzeżach miasta zostały zignorowane, co upraszcza wyniki, ale może prowadzić do utraty szczegółowych informacji o mniej gęstych obszarach przestępczości.
+
+//////////////////////////////////////
+
+Wnioski końcowe: 
+
+1. Centralnym obszarem przestępczości jest Stare Miasto oraz okolice śródmieścia, co potwierdza zarówno DBSCAN, jak i HDBSCAN.
+
+2. Mniejsze klastry przestępczości można zauważyć na obrzeżach Krakowa, w rejonach takich jak Podgórze, Mistrzejowice, Bieńczyce, czy okolice Krowodrzy.
+
+3. DBSCAN jest bardziej elastyczny w analizie szczegółowej, natomiast HDBSCAN jest bardziej uporządkowany i nadaje się do wyraźnej identyfikacji kluczowych klastrów.
+
+4. Optymalne parametry:
+- DBSCAN: eps = 250, minPts = 6.
+- HDBSCAN: minPts = 5.
